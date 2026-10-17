@@ -1531,6 +1531,135 @@ async def superhuman_go_bridge():
     return HTMLResponse(content=BRIDGE_HTML)
 
 
+_api_create_dossier = create_dossier
+_api_get_vault = get_vault
+
+# =====================================================================
+# REMOTE MCP SERVER (streamable HTTP) — mounted on this app at /mcp
+# Lets Superhuman Go (Agent Builder > Tools and Access > MCP URL) call Overdrive.
+# Tools mutate the same LIVE_TARGETS / LIVE_BLITZ_ROWS state the React UI polls.
+# =====================================================================
+import contextlib
+
+from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
+
+mcp = FastMCP(
+    "Overdrive",
+    instructions=(
+        "Overdrive is a career & lab intelligence engine. Use create_dossier when the user is on a careers, "
+        "lab, or job page (or got a recruiter email) to get cultural DNA, tailored CV bullets and a cold email draft."
+    ),
+    stateless_http=True,
+    json_response=True,
+    streamable_http_path="/mcp",
+    # No auth; allow any Host header so tunnels (cloudflared/ngrok) work.
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+)
+
+
+@mcp.tool()
+async def create_dossier(target_name: str, role: str = "", raw_page_text: str = "") -> Dict[str, Any]:
+    """Build an Overdrive dossier for a company, lab, or VC from the text of the page the user is viewing
+    (careers page, job post, lab site, or recruiter email). Returns the dossier summary (fit score, cultural DNA,
+    secret hiring filters, likely interview questions), tailored CV bullet changes (original -> tailored with
+    rationale) and a draft cold email. Also adds the dossier to the live Overdrive dashboard.
+
+    Args:
+        target_name: Company, lab, or organization name (e.g. "Anthropic", "Berkeley Hybrid Robotics Lab").
+        role: Target role or position title; leave empty for the default robotics/ML engineering role.
+        raw_page_text: Full visible text of the page or email (up to ~4000 chars are used).
+    """
+    req = DossierRequest(targetName=target_name, rawPageText=raw_page_text or "",
+                         **({"role": role} if role and role.strip() else {}))
+    d = (await _api_create_dossier(req))["dossier"]
+    return {
+        "id": d.get("id"),
+        "name": d.get("name"),
+        "kind": d.get("kind"),
+        "role": d.get("role"),
+        "tagline": d.get("tagline"),
+        "fitScore": d.get("fitScore"),
+        "readerReactionScore": d.get("readerReactionScore"),
+        "culturalDNA": d.get("dna"),
+        "secretFilters": d.get("secretFilters"),
+        "interviewQuestions": d.get("questions"),
+        "stack": d.get("stack"),
+        "tailoredCvChanges": [
+            {k: c.get(k) for k in ("section", "original", "tailored", "rationale")} for c in (d.get("cv") or [])
+        ],
+        "draftEmail": {k: (d.get("draftEmail") or {}).get(k) for k in ("recipientName", "recipientRole", "subject", "body")},
+        "dashboard": "Added to Overdrive dashboard (GET /api/targets).",
+    }
+
+
+@mcp.tool()
+async def get_vault() -> Dict[str, Any]:
+    """Get the user's personal context vault: resume, signature projects, skills and preferences. Use this to
+    personalize outreach or answer questions about the user's background."""
+    return await _api_get_vault()
+
+
+@mcp.tool()
+async def list_targets() -> Dict[str, Any]:
+    """List every company/lab/VC dossier currently tracked in Overdrive (id, name, kind, role, fit score, tagline)."""
+    return {
+        "count": len(LIVE_TARGETS),
+        "targets": [
+            {k: t.get(k) for k in ("id", "name", "kind", "role", "fitScore", "tagline")} for t in LIVE_TARGETS
+        ],
+    }
+
+
+@mcp.tool()
+async def generate_outreach_batch(goal: str, count: int = 5) -> Dict[str, Any]:
+    """Generate a batch of hyper-targeted outreach rows (professors, founders, VCs) for a career or research goal,
+    each with a personalized hook and a Reader Reaction score. Replaces the Blitz list on the dashboard.
+
+    Args:
+        goal: Career or research goal, e.g. "Embodied AI research internships".
+        count: Number of contacts to generate (1-10).
+    """
+    count = max(1, min(10, int(count or 5)))
+    res = await generate_blitz(BlitzRequest(careerGoal=goal, count=count))
+    return {
+        "goal": res["goal"],
+        "count": res["count"],
+        "rows": [
+            {k: r.get(k) for k in ("name", "title", "org", "kind", "hook", "readerReactionScore")} for r in res["rows"]
+        ],
+    }
+
+
+@mcp.tool()
+async def start_mock_interview(target_name: str, answer: str = "") -> Dict[str, Any]:
+    """Run one turn of a mock technical interview with a tough interviewer from the target company/lab.
+    Send an empty answer to get the opening question; send the candidate's answer to get the interviewer's
+    reply, technical and culture-fit scores, clarity feedback and coaching.
+
+    Args:
+        target_name: Dossier id or organization name (e.g. "anthropic").
+        answer: The candidate's answer to the previous question (empty to start).
+    """
+    return await voice_interview(VoiceInterviewRequest(targetId=target_name, userMessage=answer or ""))
+
+
+# Keep handles to the REST handlers whose names the MCP tools shadow.
+_mcp_app = mcp.streamable_http_app()
+
+
+@contextlib.asynccontextmanager
+async def _lifespan(_app):
+    # The mounted MCP app's session manager must be running for /mcp to work.
+    async with mcp.session_manager.run():
+        yield
+
+
+app.router.lifespan_context = _lifespan
+# Catch-all mount added last: FastAPI routes match first, /mcp falls through to the MCP app.
+app.mount("/", _mcp_app)
+
+
 if __name__ == "__main__":
     import uvicorn
 
