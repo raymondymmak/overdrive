@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-obsidian text-ink font-sans antialiased;
+  background-image:
+    radial-gradient(1200px 500px at 85% -10%, rgba(99, 102, 241, 0.11), transparent 60%),
+    radial-gradient(900px 400px at -10% 110%, rgba(16, 185, 129, 0.07), transparent 60%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgba(99, 102, 241, 0.45);
+}
+
+/* Thin dark scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2f42 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2a2f42;
+  border-radius: 8px;
+}
+
+:focus-visible {
+  outline: 2px solid #818cf8;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl border border-line bg-panel;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-[11px] leading-5;
+  }
+  .badge-indigo {
+    @apply border-indigo/40 bg-indigo/10 text-indigo-soft;
+  }
+  .badge-emerald {
+    @apply border-emerald/40 bg-emerald/10 text-emerald-soft;
+  }
+  .badge-amber {
+    @apply border-amber/40 bg-amber/10 text-amber;
+  }
+  .badge-rose {
+    @apply border-rose/40 bg-rose/10 text-rose;
+  }
+  .badge-mute {
+    @apply border-line bg-raised text-ink-dim;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-indigo text-white hover:bg-indigo-deep;
+  }
+  .btn-ghost {
+    @apply btn border border-line bg-raised text-ink hover:border-indigo/50 hover:bg-[#191d2b];
+  }
+  .btn-emerald {
+    @apply btn bg-emerald text-obsidian hover:bg-emerald-soft;
+  }
+}
+
+/* Highlighted keyword injected by the CV tailoring pass */
+mark.inj {
+  background: rgba(99, 102, 241, 0.22);
+  color: #c7d2fe;
+  border-bottom: 1px solid rgba(129, 140, 248, 0.7);
+  padding: 0 2px;
+  border-radius: 3px;
+}
+mark.rem {
+  background: rgba(240, 100, 140, 0.12);
+  color: #f7a1bb;
+  text-decoration: line-through;
+  text-decoration-color: rgba(240, 100, 140, 0.7);
+  padding: 0 2px;
+  border-radius: 3px;
+}
+mark.tone {
+  background: rgba(16, 185, 129, 0.16);
+  color: #a7f3d0;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
